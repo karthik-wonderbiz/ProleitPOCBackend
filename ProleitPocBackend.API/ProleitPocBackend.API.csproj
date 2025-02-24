@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>26652cda-5d85-4776-a126-9d913ee5d978</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Versioning" Version="5.1.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProleitPocBackend.Data\ProleitPocBackend.Data.csproj" />
+    <ProjectReference Include="..\ProleitPocBackend.IRepository\ProleitPocBackend.IRepository.csproj" />
+    <ProjectReference Include="..\ProleitPOCBackend.IService\ProleitPOCBackend.IService.csproj" />
+    <ProjectReference Include="..\ProleitPocBackend.Repository\ProleitPocBackend.Repository.csproj" />
+    <ProjectReference Include="..\ProleitPOCBackend.Service\ProleitPOCBackend.Service.csproj" />
+  </ItemGroup>
+
+</Project>
