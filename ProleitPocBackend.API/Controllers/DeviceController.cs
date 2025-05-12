@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using ProleitPocBackend.IRepository;
 using ProleitPocBackend.Model;
 using ProleitPOCBackend.IService;
 
@@ -8,6 +7,7 @@ using ProleitPOCBackend.IService;
 namespace ProleitPocBackend.API.Controllers
 {
     [ApiVersion("1.0")]
+    //[ApiVersion("2.0")]
     [Route("api/v{version:apiVersion}/[controller]")]
     [ApiController]
     public class DeviceController : ControllerBase
@@ -18,6 +18,14 @@ namespace ProleitPocBackend.API.Controllers
         {
             _service = service;
         }
+
+        //[HttpGet("version")]
+        //[MapToApiVersion("1.0")]
+        //public IActionResult GetV1() => Ok("API v1.0 Response");
+
+        //[HttpGet("version")]
+        //[MapToApiVersion("2.0")]
+        //public IActionResult GetV2() => Ok("API v2.0 Response");
 
         [HttpGet("machines")]
         public async Task<IActionResult> GetMachines()
@@ -33,6 +41,21 @@ namespace ProleitPocBackend.API.Controllers
             return Ok(result);
         }
 
+        [HttpGet("machines-properties")]
+        public async Task<IActionResult> GetMachinesAndProperties()
+        {
+            var machines = await _service.GetMachinesAsync();
+            var properties = await _service.GetPropertiesAsync();
+
+            var result = new
+            {
+                Machines = machines,
+                Properties = properties
+            };
+
+            return Ok(result);
+        }
+
         [HttpGet("filter")]
         public async Task<IActionResult> GetFilteredData([FromQuery] DataFilter filter)
         {
@@ -40,8 +63,8 @@ namespace ProleitPocBackend.API.Controllers
             return Ok(result);
         }
 
-        [HttpGet("daily-statistics")]
-        public async Task<IActionResult> GetDailyStatistics(
+        [HttpGet("aggregate-values")]
+        public async Task<IActionResult> GetAggregateValues(
             [FromQuery] string machine,
             [FromQuery] string property,
             [FromQuery] DateTime startDate,
@@ -52,9 +75,9 @@ namespace ProleitPocBackend.API.Controllers
                 return BadRequest("Machine and Property are required.");
             }
 
-            var statistics = await _service.GetDailyStatisticsAsync(machine, property, startDate, endDate);
+            var result = await _service.GetAggregateValuesAsync(machine, property, startDate, endDate);
 
-            return Ok(statistics);
+            return Ok(result);
         }
 
     }

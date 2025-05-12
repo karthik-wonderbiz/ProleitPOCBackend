@@ -7,6 +7,7 @@ using ProleitPocBackend.IRepository;
 using ProleitPocBackend.Repository;
 using ProleitPOCBackend.IService;
 using ProleitPOCBackend.Service;
+using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,9 +53,13 @@ builder.Services.AddSignalR();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
+});
 
 var app = builder.Build();
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -69,5 +74,10 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ProleitPocBackendHubs>("/dataHub");
 app.UseHttpsRedirection();
+
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    SqlDependency.Stop(builder.Configuration.GetConnectionString("DefaultConnection"));
+});
 
 app.Run();

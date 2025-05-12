@@ -11,100 +11,48 @@ namespace ProleitPocBackend.Repository
 {
     public class DeviceRepository : IDeviceRepository
     {
-        private readonly IHubContext<ProleitPocBackendHubs> _context;
-        private readonly string _connectionString;
-        private static bool _isSubscribed = false;  // Prevent multiple subscriptions
+        private readonly IHubContext<ProleitPocBackendHubs> _hubContext;
         private readonly ProleitPocBackendDbContext _dbContext;
-
-        public DeviceRepository(IConfiguration configuration, IHubContext<ProleitPocBackendHubs> context, ProleitPocBackendDbContext dbContext)
+        private readonly string _connectionString;
+        private static bool _isSubscribed = false;  
+        private static bool _isSubscribedToEvent = false;
+        public DeviceRepository(IConfiguration configuration, IHubContext<ProleitPocBackendHubs> hubContext, ProleitPocBackendDbContext dbContext)
         {
             _connectionString = configuration.GetConnectionString("DefaultConnection")!;
-            _context = context;
+            _hubContext = hubContext;
             _dbContext = dbContext;
-
-            // Start SQL Dependency at application startup
             SqlDependency.Start(_connectionString);
-
             if (!_isSubscribed)
             {
                 SubscribeToDeviceChanges();
-                _isSubscribed = true; // Ensure only one active subscription
+                _isSubscribed = true; 
             }
         }
-
-        public List<Device> GetAllDevices()
-        {
-            var devices = new List<Device>();
-
-            using (SqlConnection conn = new SqlConnection(_connectionString))
-            {
-                conn.Open();
-                string commandText = "SELECT Id, Machine, Property, Value, Timestamp FROM dbo.Devices";
-                using (SqlCommand cmd = new SqlCommand(commandText, conn))
-                {
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            devices.Add(new Device
-                            {
-                                Id = Guid.Parse(reader["Id"].ToString()!),
-                                Machine = reader["Machine"].ToString()!,
-                                Property = reader["Property"].ToString()!,
-                                Value = Convert.ToInt32(reader["Value"]),
-                                Timestamp = Convert.ToDateTime(reader["Timestamp"])
-                            });
-                        }
-                    }
-                }
-            }
-            return devices;
-        }
-
         public async Task<IEnumerable<string>> GetMachinesAsync()
         {
             return await _dbContext.devices.Select(m => m.Machine).Distinct().ToListAsync();
         }
-
         public async Task<IEnumerable<string>> GetPropertiesAsync()
         {
             return await _dbContext.devices.Select(m => m.Property).Distinct().ToListAsync();
         }
-
         public async Task<IEnumerable<Device>> GetFilteredDataAsync(DataFilter filter)
         {
             var query = _dbContext.devices.AsQueryable();
-
-            if (!string.IsNullOrEmpty(filter.Machine))
-                query = query.Where(m => m.Machine == filter.Machine);
-
-            if (!string.IsNullOrEmpty(filter.Property))
-                query = query.Where(m => m.Property == filter.Property);
-
-            if (filter.MinValue.HasValue)
-                query = query.Where(m => m.Value >= filter.MinValue.Value);
-
-            if (filter.MaxValue.HasValue)
-                query = query.Where(m => m.Value <= filter.MaxValue.Value);
-
-            if (filter.StartDate.HasValue)
-                query = query.Where(m => m.Timestamp >= filter.StartDate.Value);
-
-            if (filter.EndDate.HasValue)
-                query = query.Where(m => m.Timestamp <= filter.EndDate.Value);
-
+            if (!string.IsNullOrEmpty(filter.Machine)) query = query.Where(m => m.Machine == filter.Machine);
+            if (!string.IsNullOrEmpty(filter.Property)) query = query.Where(m => m.Property == filter.Property);
+            if (filter.MinValue.HasValue) query = query.Where(m => m.Value >= filter.MinValue.Value);
+            if (filter.MaxValue.HasValue) query = query.Where(m => m.Value <= filter.MaxValue.Value);
+            if (filter.StartDate.HasValue) query = query.Where(m => m.Timestamp >= filter.StartDate.Value);
+            if (filter.EndDate.HasValue) query = query.Where(m => m.Timestamp <= filter.EndDate.Value);
             return await query.ToListAsync();
         }
-
-        public async Task<List<DailyStatistic>> GetDailyStatisticsAsync(string machine, string property, DateTime startDate, DateTime endDate)
+        public async Task<List<AggregateValue>> GetAggregateValuesAsync(string machine, string property, DateTime startDate, DateTime endDate)
         {
             var result = await _dbContext.devices
-                .Where(d => d.Machine == machine
-                            && d.Property == property
-                            && d.Timestamp >= startDate
-                            && d.Timestamp <= endDate)
-                .GroupBy(d => d.Timestamp.Date) // Group by day
-                .Select(g => new DailyStatistic
+                .Where(d => d.Machine == machine && d.Property == property && d.Timestamp >= startDate && d.Timestamp <= endDate)
+                .GroupBy(d => d.Timestamp.Date) 
+                .Select(g => new AggregateValue
                 {
                     Date = g.Key,
                     MinValue = g.Min(d => d.Value),
@@ -113,97 +61,59 @@ namespace ProleitPocBackend.Repository
                 })
                 .OrderBy(d => d.Date)
                 .ToListAsync();
-
             return result;
         }
-
-
         private void SubscribeToDeviceChanges()
         {
-            using (SqlConnection conn = new SqlConnection(_connectionString))
+            if (!_isSubscribedToEvent)
             {
-                conn.Open();
-                string commandText = "SELECT Id FROM dbo.Devices";  // Simple query to track changes
-
-                using (SqlCommand cmd = new SqlCommand(commandText, conn))
+                Console.WriteLine($"[SignalR] Subscribing to device changes at {DateTime.Now}");
+                using (SqlConnection conn = new SqlConnection(_connectionString))
                 {
-                    SqlDependency dependency = new SqlDependency(cmd);
-                    // Unsubscribe from the previous event before subscribing
-                    dependency.OnChange -= OnDeviceChange;
-                    dependency.OnChange += OnDeviceChange;
-
-                    cmd.ExecuteReader(); // Execute query to register notifications
+                    conn.Open();
+                    string commandText = "SELECT Id, Machine, Property, Value, Timestamp FROM dbo.Devices";
+                    using (SqlCommand cmd = new SqlCommand(commandText, conn))
+                    {
+                        SqlDependency dependency = new SqlDependency(cmd);
+                        dependency.OnChange += OnDeviceChange;
+                        cmd.ExecuteReader();
+                    }
                 }
+                _isSubscribedToEvent = true;
+            }
+            else
+            {
+                Console.WriteLine($"[SignalR] Already subscribed to device changes at {DateTime.Now}");
             }
         }
-
         private async void OnDeviceChange(object sender, SqlNotificationEventArgs e)
         {
             Console.WriteLine($"[SignalR] Database change detected at {DateTime.Now}");
-
             if (e.Type == SqlNotificationType.Change)
             {
-                // Fetch latest record
                 var latestDevice = GetLatestDevice();
-
                 if (latestDevice != null)
                 {
-                    // Notify SignalR clients with actual data
-                    await _context.Clients.All.SendAsync("refreshDevices", latestDevice);
+                    await _hubContext.Clients.All.SendAsync("refreshDevices", latestDevice);
                 }
-
-                // Re-subscribe to listen for future changes
+                _isSubscribedToEvent = false;
                 SubscribeToDeviceChanges();
             }
         }
-
-        //private Device? GetLatestDevice()
-        //{
-        //    using (SqlConnection conn = new SqlConnection(_connectionString))
-        //    {
-        //        conn.Open();
-        //        string query = "SELECT TOP 1 Id, Machine, Property, Value, Timestamp FROM dbo.Devices ORDER BY Timestamp DESC";
-
-        //        using (SqlCommand cmd = new SqlCommand(query, conn))
-        //        {
-        //            using (SqlDataReader reader = cmd.ExecuteReader())
-        //            {
-        //                if (reader.Read())
-        //                {
-        //                    return new Device
-        //                    {
-        //                        Id = Guid.Parse(reader["Id"].ToString()!),
-        //                        Machine = reader["Machine"].ToString()!,
-        //                        Property = reader["Property"].ToString()!,
-        //                        Value = Convert.ToInt32(reader["Value"]),
-        //                        Timestamp = Convert.ToDateTime(reader["Timestamp"])
-        //                    };
-        //                }
-        //            }
-        //        }
-        //    }
-        //    return null;
-        //}
-
-        // Stop SQL Dependency when the application shuts down
-
         private List<Device> GetLatestDevice(int seconds = 5)
         {
             List<Device> devices = new List<Device>();
-
             using (SqlConnection conn = new SqlConnection(_connectionString))
             {
                 conn.Open();
                 string query = @"
-            SELECT Id, Machine, Property, Value, Timestamp
-            FROM dbo.Devices
-            WHERE Timestamp >= DATEADD(SECOND, -@Seconds, GETDATE())
-            ORDER BY Timestamp DESC";
-
+                    SELECT Id, Machine, Property, Value, Timestamp
+                    FROM dbo.Devices
+                    WHERE Timestamp >= DATEADD(SECOND, -@Seconds, GETDATE())
+                    ORDER BY Timestamp DESC";
                 using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
                     cmd.Parameters.AddWithValue("@Seconds", seconds);
-
                     using (SqlDataReader reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -222,7 +132,6 @@ namespace ProleitPocBackend.Repository
             }
             return devices;
         }
-
         ~DeviceRepository()
         {
             SqlDependency.Stop(_connectionString);

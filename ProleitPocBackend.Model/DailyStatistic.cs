@@ -1,6 +1,6 @@
 ﻿namespace ProleitPocBackend.Model
 {
-    public class DailyStatistic
+    public class AggregateValue
     {
         public DateTime Date { get; set; }
         public decimal MinValue { get; set; }

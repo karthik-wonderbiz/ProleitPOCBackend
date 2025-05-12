@@ -28,9 +28,9 @@ namespace ProleitPOCBackend.Service
             return await _repository.GetFilteredDataAsync(filter);
         }
 
-        public async Task<List<DailyStatistic>> GetDailyStatisticsAsync(string machine, string property, DateTime startDate, DateTime endDate)
+        public async Task<List<AggregateValue>> GetAggregateValuesAsync(string machine, string property, DateTime startDate, DateTime endDate)
         {
-            return await _repository.GetDailyStatisticsAsync(machine, property, startDate, endDate);
+            return await _repository.GetAggregateValuesAsync(machine, property, startDate, endDate);
         }
 
     }
